@@ -89,9 +89,9 @@ impl TokenizerState {
         let mut ident = String::new();
         while let Some(chr) = self.get_char() {
             if chr.is_alphabetic() || chr.is_ascii_digit() || chr == '_' {
-                println!("chr = {}", chr);
                 ident.push(chr);
             } else {
+                self.ungetc(chr);
                 break;
             }
         }
@@ -102,10 +102,10 @@ impl TokenizerState {
         let mut n = 0;
         while let Some(chr) = self.get_char() {
             if chr.is_ascii_digit() {
-                println!("chr = {}", chr);
                 n *= 10;
                 n += chr.to_digit(10).unwrap() as u64;
             } else {
+                self.ungetc(chr);
                 break;
             }
         }
@@ -141,7 +141,7 @@ impl TokenizerState {
         ]);
 
         let keyword_set: HashSet<&'static str> =
-            HashSet::from(["int", "long", "unsigned", "short", "struct"]);
+            HashSet::from(["int", "long", "unsigned", "short", "struct", "return"]);
 
         let mut tokens = vec![];
 
@@ -209,8 +209,15 @@ mod tests {
     }
 
     #[test]
+    fn identifier2() {
+        let v1 = vec![IDENTIFIER("main".to_string()), LPAREN, RPAREN, EOF];
+        let res = tokenize("main()");
+        assert_eq!(v1, res);
+    }
+
+    #[test]
     fn keywords() {
-        let keywords = vec!["unsigned", "short", "struct", "int", "long"];
+        let keywords = vec!["return", "unsigned", "short", "struct", "int", "long"];
         for keyword in keywords {
             let res = tokenize(keyword);
             assert_eq!(res, vec![KEYWORD(String::from(keyword)), EOF]);
@@ -221,6 +228,13 @@ mod tests {
     fn numbers() {
         let v1 = vec![NUMBER(123), NUMBER(0), NUMBER(33), EOF];
         let res = tokenize("123 0 33");
+        assert_eq!(v1, res);
+    }
+
+    #[test]
+    fn numbers2() {
+        let v1 = vec![NUMBER(123), LPAREN, RPAREN, EOF];
+        let res = tokenize("123()");
         assert_eq!(v1, res);
     }
 
