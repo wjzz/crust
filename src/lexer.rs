@@ -1,13 +1,42 @@
 use std::collections::{HashMap, HashSet};
 
+#[allow(non_camel_case_types)]
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Token {
     LBRACE,
     RBRACE,
     LPAREN,
     RPAREN,
+    L_SQUARE_BRACKET,
+    R_SQUARE_BRACKET,
     KEYWORD(String),
     IDENTIFIER(String),
+    NUMBER(u64),
+    B_AND,
+    B_OR,
+    EQUAL,
+    PLUS,
+    MINUS,
+    TIMES,
+    SLASH,
+    PERCENT,
+    AMPERSAND,
+    LESS,
+    GREATER,
+    VERTICAL_BAR,
+    XOR,
+    SHL,
+    SHR,
+    BANG,
+    TILDE,
+    COMMA,
+    DOT,
+    QUESTION_MARK,
+    QUOTE,
+    DOUBLE_QUOTE,
+    COLON,
+    SEMICOLON,
+    EOF,
 }
 
 struct TokenizerState {
@@ -19,8 +48,9 @@ struct TokenizerState {
 
 impl TokenizerState {
     fn new(input: &str) -> TokenizerState {
-        let chars: Vec<char> = input.chars().collect();
-        let mut i = 0;
+        let mut chars: Vec<char> = input.chars().collect();
+        chars.push(' ');
+        let i = 0;
         let n = chars.len();
         let ungetch = None;
         TokenizerState {
@@ -57,14 +87,10 @@ impl TokenizerState {
 
     fn tokenize_identfier(&mut self) -> String {
         let mut ident = String::new();
-        loop {
-            if let Some(chr) = self.get_char() {
-                if chr.is_alphabetic() || chr.is_ascii_digit() || chr == '_' {
-                    println!("chr = {}", chr);
-                    ident.push(chr);
-                } else {
-                    break;
-                }
+        while let Some(chr) = self.get_char() {
+            if chr.is_alphabetic() || chr.is_ascii_digit() || chr == '_' {
+                println!("chr = {}", chr);
+                ident.push(chr);
             } else {
                 break;
             }
@@ -72,12 +98,46 @@ impl TokenizerState {
         ident
     }
 
+    fn tokenize_number(&mut self) -> u64 {
+        let mut n = 0;
+        while let Some(chr) = self.get_char() {
+            if chr.is_ascii_digit() {
+                println!("chr = {}", chr);
+                n *= 10;
+                n += chr.to_digit(10).unwrap() as u64;
+            } else {
+                break;
+            }
+        }
+        n
+    }
+
     fn tokenize_iter(&mut self) -> Vec<Token> {
-        let charmap: HashMap<char, Token> = HashMap::from([
-            ('(', Token::LPAREN),
-            (')', Token::RPAREN),
-            ('{', Token::LBRACE),
-            ('}', Token::RBRACE),
+        let charmap: HashMap<&'static str, Token> = HashMap::from([
+            ("(", Token::LPAREN),
+            (")", Token::RPAREN),
+            ("{", Token::LBRACE),
+            ("}", Token::RBRACE),
+            ("[", Token::L_SQUARE_BRACKET),
+            ("]", Token::R_SQUARE_BRACKET),
+            ("+", Token::PLUS),
+            ("-", Token::MINUS),
+            ("*", Token::TIMES),
+            ("/", Token::SLASH),
+            ("%", Token::PERCENT),
+            ("!", Token::BANG),
+            ("^", Token::XOR),
+            ("~", Token::TILDE),
+            ("&", Token::AMPERSAND),
+            ("|", Token::VERTICAL_BAR),
+            ("&&", Token::B_AND),
+            ("||", Token::B_OR),
+            ("=", Token::EQUAL),
+            (";", Token::SEMICOLON),
+            (":", Token::COLON),
+            ("?", Token::QUESTION_MARK),
+            ("'", Token::QUOTE),
+            ("\"", Token::DOUBLE_QUOTE),
         ]);
 
         let keyword_set: HashSet<&'static str> =
@@ -88,6 +148,10 @@ impl TokenizerState {
         while let Some(chr) = self.get_char() {
             if chr.is_whitespace() {
                 continue;
+            } else if chr.is_digit(10) {
+                self.ungetc(chr);
+                let n = self.tokenize_number();
+                tokens.push(Token::NUMBER(n));
             } else if chr.is_alphabetic() || chr == '_' {
                 self.ungetc(chr);
                 let ident = self.tokenize_identfier();
@@ -96,15 +160,25 @@ impl TokenizerState {
                 } else {
                     tokens.push(Token::IDENTIFIER(ident));
                 }
-            } else if let Some(res) = charmap.get(&chr) {
-                tokens.push(res.clone());
             } else {
-                panic!("Unknown character!: {}", chr);
+                // check for multi-character operators (like '&&' or '+=')
+                // TODO: support triple-character ops (like '<<=' or '>>=')
+                let chr2 = self.get_char().unwrap();
+                let s = String::from_iter(vec![chr, chr2]);
+                if let Some(res) = charmap.get(&*s) {
+                    tokens.push(res.clone());
+                } else {
+                    if let Some(res) = charmap.get(&*String::from(chr)) {
+                        tokens.push(res.clone());
+                        self.ungetc(chr2);
+                    } else {
+                        panic!("Unknown character!: {}", chr);
+                    }
+                }
             }
         }
 
-        // TODO: add the EOF token
-
+        tokens.push(Token::EOF);
         tokens
     }
 }
@@ -120,8 +194,8 @@ mod tests {
 
     #[test]
     fn parens_braces() {
-        let v1 = vec![LBRACE, RBRACE, LPAREN, RPAREN];
-        let res = tokenize("{} (\n )\t");
+        let v1 = vec![LBRACE, RBRACE, LPAREN, L_SQUARE_BRACKET, R_SQUARE_BRACKET, RPAREN, EOF];
+        let res = tokenize("{} (\n [] )\t");
         assert_eq!(v1, res);
     }
 
@@ -130,7 +204,7 @@ mod tests {
         let ids = vec!["x", "abc", "hello123", "_foo", "__gcc_test", "int66"];
         for identifier in ids {
             let res = tokenize(identifier);
-            assert_eq!(res, vec![IDENTIFIER(String::from(identifier))]);
+            assert_eq!(res, vec![IDENTIFIER(String::from(identifier)), EOF]);
         }
     }
 
@@ -139,7 +213,42 @@ mod tests {
         let keywords = vec!["unsigned", "short", "struct", "int", "long"];
         for keyword in keywords {
             let res = tokenize(keyword);
-            assert_eq!(res, vec![KEYWORD(String::from(keyword))]);
+            assert_eq!(res, vec![KEYWORD(String::from(keyword)), EOF]);
         }
+    }
+
+    #[test]
+    fn numbers() {
+        let v1 = vec![NUMBER(123), NUMBER(0), NUMBER(33), EOF];
+        let res = tokenize("123 0 33");
+        assert_eq!(v1, res);
+    }
+
+    #[test]
+    fn logical_ops() {
+        let v1 = vec![B_AND, B_OR, BANG, EOF];
+        let res = tokenize("&& || !");
+        assert_eq!(v1, res);
+    }
+
+    #[test]
+    fn arith_ops() {
+        let v1 = vec![PLUS, MINUS, TIMES, SLASH, PERCENT, EOF];
+        let res = tokenize("+ - * / %");
+        assert_eq!(v1, res);
+    }
+
+    #[test]
+    fn bitwise_ops() {
+        let v1 = vec![AMPERSAND, VERTICAL_BAR, XOR, TILDE, EOF];
+        let res = tokenize("& | ^ ~");
+        assert_eq!(v1, res);
+    }
+
+    #[test]
+    fn special_ops() {
+        let v1 = vec![EQUAL, SEMICOLON, COLON, QUESTION_MARK, QUOTE, DOUBLE_QUOTE, EOF];
+        let res = tokenize("= ; : ? ' \" ");
+        assert_eq!(v1, res);
     }
 }

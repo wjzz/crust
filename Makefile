@@ -1,2 +1,2 @@
 test:
-	@RUSTFLAGS=-Awarnings cargo test -q
+	@clear && RUSTFLAGS=-Awarnings cargo test -q
